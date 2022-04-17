@@ -1,17 +1,17 @@
 package com.almet.task1;
 
-import java.util.Comparator;
+import java.time.LocalDate;
 
 public class Spending implements Comparable<Spending> {
-    private final String date;
-    private final double amount;
+    private final LocalDate date;
+    private double amount;
 
-    public Spending(String date, double amount) {
+    public Spending(LocalDate date, double amount) {
         this.date = date;
         this.amount = amount;
     }
 
-    public String getDate() {
+    public LocalDate getDate() {
         return date;
     }
 
@@ -19,9 +19,15 @@ public class Spending implements Comparable<Spending> {
         return amount;
     }
 
+    public void setAmount(double amount) {
+        this.amount = amount;
+    }
+
     @Override
     public int compareTo(Spending t) {
-        return date.compareTo(t.date);
+        Double amount1 = amount;
+        Double amount2 = t.amount;
+        return amount1.compareTo(amount2);
     }
 
     @Override
