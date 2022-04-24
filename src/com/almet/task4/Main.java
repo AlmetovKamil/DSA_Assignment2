@@ -1,5 +1,6 @@
-package com.almet.task3;
+package com.almet.task4;
 
+import java.lang.reflect.Array;
 import java.util.*;
 
 /**
@@ -11,82 +12,315 @@ import java.util.*;
  * @author Kamil Almetov BS21-05
  */
 public class Main {
+    public static final int SIZE = 3000;
+
     public static void main(String[] args) {
-        // read the input
         Scanner in = new Scanner(System.in);
-        IPriorityQueue<Integer, String> queue = new FibonacciMinHeap<>(Integer.MIN_VALUE);
         int n = in.nextInt();
-        in.nextLine();
-        for (int i = 0; i < n; i++) {
-            String[] line = in.nextLine().split(" ");
+        HashMap<String, Vertex<VertexPair>> vertices = new HashMap<>();
+        Graph<VertexPair, Double> graph = new Graph<>(SIZE, Double.class);
+        // array of heap nodes that contain vertices of graph
+        ArrayList<Node<Double, Vertex<VertexPair>>> vertexArray = new ArrayList<>(SIZE);
+        for (int i = 0; i < n; ++i) {
+            String operation = in.next();
             // ADD operation
-            // line == {"ADD", branch name, penalty}
-            if (line[0].equals("ADD")) {
-                String value = line[1];
-                int key = Integer.parseInt(line[2]);
-                queue.insert(new Node<>(key, value));
+            if (operation.charAt(0) == 'A') {
+                String vertexName = in.next();
+                double penalty = in.nextDouble();
+                Vertex<VertexPair> v = graph.insertVertex(new VertexPair(vertexName, penalty));
+                vertices.put(v.value.name, v);
+                if (vertexArray.size() == 0) {
+                    vertexArray.add(new Node<>(0., v));
+                } else {
+                    vertexArray.add(new Node<>(Double.MAX_VALUE, v));
+                }
+            }
+            // CONNECT operation
+            else if (operation.charAt(0) == 'C') {
+                String name1 = in.next(), name2 = in.next();
+                Vertex<VertexPair> v1 = vertices.get(name1);
+                Vertex<VertexPair> v2 = vertices.get(name2);
+                double distance = in.nextDouble() / (v1.value.penalty + v2.value.penalty);
+                graph.insertEdge(v1, v2, distance);
             }
             // PRINT_MIN operation
             else {
-                System.out.println(queue.extractMin());
+                AlgorithmsOnGraphs.PrimsAlgorithm(graph, vertexArray);
             }
         }
+        in.close();
+    }
+}
+
+/**
+ * Class with algorithms on graphs.
+ * (Sometimes I use in my explanation term MST. In that specific task by saying MST I mean Minimum Spanning Forest)
+ */
+class AlgorithmsOnGraphs {
+    // We're building MST, so parent[i] = id of previous vertex in the MST (it's parent)
+    static int[] parent = new int[Main.SIZE];
+    // minDistance[i] = minimum distance to MST from vertex with 'i' id
+    static double[] minDistance = new double[Main.SIZE];
+    // if vertex with 'i' id is in queue isInQueue[i] = true
+    static boolean[] isInQueue = new boolean[Main.SIZE];
+
+    /**
+     * Algorithm that finds Minimum Spanning Forest of graph
+     *
+     * @param graph       graph in which MST will be found
+     * @param vertexArray array of heap nodes that contain vertices of graph
+     */
+    public static void PrimsAlgorithm(Graph<VertexPair, Double> graph, ArrayList<Node<Double, Vertex<VertexPair>>> vertexArray) {
+        // priority queue based on Fibonacci heap
+        FibonacciMinHeap<Double, Vertex<VertexPair>> queue = new FibonacciMinHeap<>(Double.MIN_VALUE);
+        StringBuilder ans = new StringBuilder();
+        int size = vertexArray.size();
+        // fill arrays with starting values
+        // algorithm starts from vertex with id = 0
+        // so minDistance[0] = 0
+        // others equal to infinity
+        for (int id = 0; id < size; ++id) {
+            parent[id] = -1;
+            if (id == 0) minDistance[id] = 0;
+            else minDistance[id] = Double.MAX_VALUE;
+            // make sure that the keys of nodes are correct
+            vertexArray.get(id).key = minDistance[id];
+            // add to queue only vertices that have incident edges
+            if (vertexArray.get(id).value.degree != 0) {
+                isInQueue[id] = true;
+                queue.insert(vertexArray.get(id));
+            } else {
+                isInQueue[id] = false;
+            }
+        }
+        Node<Double, Vertex<VertexPair>> u;
+        // while something is in the queue, perform algorithm
+        while (!queue.isEmpty()) {
+            // extract closest to the MST vertex from the queue
+            u = queue.extractMin();
+            isInQueue[u.value.id] = false;
+            // look at all its adjacent vertices
+            for (int i = 0; i < size; i++) {
+                Double edge = graph.adjacencyMatrix[u.value.id][i];
+                if (edge == null) continue;
+                Node<Double, Vertex<VertexPair>> v = vertexArray.get(i);
+                // if adjacent vertex is in queue and the distance between them is less than the distance from MST to the adjacent vertex
+                if (isInQueue[i] && edge.compareTo(minDistance[i]) < 0) {
+                    // add adjacent vertex to MST
+                    parent[i] = u.value.id;
+                    // update the distance from MST to adjacent vertex (in the queue also)
+                    minDistance[i] = edge;
+                    queue.decreaseKey(v, edge);
+                }
+            }
+            // add the edge to the answer
+            if (parent[u.value.id] != -1) {
+                ans.append(vertexArray.get(parent[u.value.id]).value.value.name).append(":").append(u.value.value.name).append(" ");
+            }
+        }
+        System.out.println(ans);
+    }
+
+}
+
+/**
+ * Class that represents the vertex of graph
+ *
+ * @param <V> type of value of vertex
+ */
+class Vertex<V> {
+    int id;
+    V value;
+    // number of incident edges
+    int degree;
+
+    public Vertex(int id, V value) {
+        this.id = id;
+        this.value = value;
+        this.degree = 0;
+    }
+}
+
+/**
+ * Class that represents edge of graph
+ *
+ * @param <V> type of vertex value
+ * @param <E> type of edge distance
+ */
+class Edge<V, E> {
+    E distance;
+    Vertex<V> v1, v2;
+}
+
+/**
+ * Interface that represents graph operations
+ *
+ * @param <V> type of vertex value
+ * @param <E> type of edge distance
+ */
+interface IGraph<V, E> {
+    /**
+     * Method that inserts vertex with value 'v' to the graph
+     *
+     * @param v value of vertex
+     * @return reference to created vertex
+     */
+    Vertex<V> insertVertex(V v);
+
+    /**
+     * Method that inserts edge to the graph
+     *
+     * @param from first ending of edge
+     * @param to   second ending of edge
+     * @param w    edge's distance
+     * @return reference to created edge
+     */
+    Edge<V, E> insertEdge(Vertex<V> from, Vertex<V> to, E w);
+
+    /**
+     * Method that removes vertex 'v' from the graph
+     *
+     * @param v removing vertex
+     */
+    void removeVertex(Vertex<V> v);
+
+    /**
+     * Method that removes edge 'e' from the graph
+     *
+     * @param e removing edge
+     */
+    void removeEdge(Edge<V, E> e);
+
+    /**
+     * Method that returns degree of vertex 'v'
+     *
+     * @param v vertex which degree is found
+     * @return degree of vertex
+     */
+    int degree(Vertex<V> v);
+
+    /**
+     * @param v first vertex
+     * @param u second vertex
+     * @return true if 'u' and 'v' are adjacent, false otherwise
+     */
+    boolean areAdjacent(Vertex<V> v, Vertex<V> u);
+}
+
+/**
+ * Class that represents vertex value for this task
+ */
+class VertexPair {
+    String name;
+    double penalty;
+
+
+    public VertexPair(String name, double penalty) {
+        this.name = name;
+        this.penalty = penalty;
+    }
+}
+
+/**
+ * Class that implements IGraph based on adjacency matrix
+ *
+ * @param <V> type of vertex value
+ * @param <E> type of edge distance
+ * @see IGraph
+ */
+class Graph<V, E> implements IGraph<V, E> {
+    // currentIndex is used to insert new vertices
+    int currentIndex;
+    // capacity of adjacent matrix
+    int capacity;
+    E[][] adjacencyMatrix;
+    // HashMap of vertices. key is the value of vertex, value - the reference to vertex
+    public HashMap<V, Vertex<V>> vertices;
+
+    public Graph(int capacity, Class<? extends E> ex) {
+        this.currentIndex = 0;
+        this.capacity = capacity;
+        this.adjacencyMatrix = (E[][]) Array.newInstance(ex, capacity, capacity);
+        this.vertices = new HashMap<>();
     }
 
     /**
-     * This function was used for testing extractMin function of the heap
-     * We insert n nodes with random integer keys to the queue
-     * and then extract them all and add to the 'a' array.
-     * It's the same as performing heap sort.
-     * So if extract min works correctly, the 'a' array must be sorted
+     * @param v value of vertex
+     * @return the reference to inserted vertex
+     * @see IGraph#insertVertex(V)
      */
-    static void testExtractMin() {
-        IPriorityQueue<Integer, Integer> q = new FibonacciMinHeap<>(Integer.MIN_VALUE);
-        Random random = new Random();
-        int n = 100000;
-        List<Integer> input = new ArrayList<>(n);
-
-        for (int i = 0; i < n; i++) {
-            int k = random.nextInt();
-            input.add(k);
-            q.insert(new Node<>(k, k));
-        }
-
-        List<Integer> a = new ArrayList<>(n);
-        //System.out.println(input);
-        for (int i = 0; i < n; i++) {
-            Node<Integer, Integer> node = q.extractMin();
-            a.add(node.key);
-        }
-        Collections.sort(input);
-        System.out.println(input.equals(a));
-        //System.out.println(a);
+    @Override
+    public Vertex<V> insertVertex(V v) {
+        Vertex<V> vertex = new Vertex<>(currentIndex++, v);
+        this.vertices.put(vertex.value, vertex);
+        return vertex;
     }
 
     /**
-     * This function was used to test delete operation
-     * We add n nodes to the heap from 0 to n-1 integers, then delete each element i such that i%10 == 0
-     * Extract all elements and check if deleted elements were actually deleted
+     * @param from first ending of edge
+     * @param to   second ending of edge
+     * @param w    edge's distance
+     * @return reference to created edge
+     * @see IGraph#insertEdge(Vertex, Vertex, E)
      */
-    static void testDelete() {
-        IPriorityQueue<Integer, Integer> q = new FibonacciMinHeap<>(Integer.MIN_VALUE);
-        int n = 100;
-        List<Node<Integer, Integer>> toBeDeleted = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            Node<Integer, Integer> node = new Node<>(i, i);
-            if (i % 10 == 0) {
-                toBeDeleted.add(node);
-            }
-            q.insert(node);
+    @Override
+    public Edge<V, E> insertEdge(Vertex<V> from, Vertex<V> to, E w) {
+        Edge<V, E> edge = new Edge<>();
+        edge.v1 = from;
+        edge.v2 = to;
+        edge.distance = w;
+        adjacencyMatrix[from.id][to.id] = w;
+        adjacencyMatrix[to.id][from.id] = w;
+        from.degree++;
+        to.degree++;
+        return edge;
+    }
+
+    /**
+     * @param v removing vertex
+     * @see IGraph#removeVertex(Vertex)
+     */
+    @Override
+    public void removeVertex(Vertex<V> v) {
+        for (int i = 0; i < vertices.size(); ++i) {
+            adjacencyMatrix[v.id][i] = null;
+            adjacencyMatrix[i][v.id] = null;
         }
-        List<Integer> a = new ArrayList<>(n);
-        for (Node<Integer, Integer> integerIntegerNode : toBeDeleted) {
-            q.delete(integerIntegerNode);
-        }
-        for (int i = 0; i < n - 10; i++) {
-            a.add((q.extractMin()).key);
-        }
-        System.out.println(a);
+        vertices.remove(v.value);
+    }
+
+    /**
+     * @param e removing edge
+     * @see IGraph#removeEdge(Edge)
+     */
+    @Override
+    public void removeEdge(Edge<V, E> e) {
+        adjacencyMatrix[e.v1.id][e.v2.id] = null;
+        adjacencyMatrix[e.v2.id][e.v1.id] = null;
+        e.v1.degree--;
+        e.v2.degree--;
+
+    }
+
+    /**
+     * @param v vertex which degree is found
+     * @return degree of vertex
+     * @see IGraph#degree(Vertex)
+     */
+    @Override
+    public int degree(Vertex<V> v) {
+        return v.degree;
+    }
+
+    /**
+     * @param v first vertex
+     * @param u second vertex
+     * @return true if 'u' and 'v' are adjacent, false otherwise
+     * @see IGraph#areAdjacent(Vertex, Vertex)
+     */
+    @Override
+    public boolean areAdjacent(Vertex<V> v, Vertex<V> u) {
+        return adjacencyMatrix[v.id][u.id] != null;
     }
 }
 
